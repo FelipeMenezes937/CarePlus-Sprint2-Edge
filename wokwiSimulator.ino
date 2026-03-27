@@ -8,24 +8,23 @@
 //Autor Rev2: Fábio Henrique Cabrini
 //Rev3: 1-11-2023 Refinamento do código e ajustes para o funcionamento no FIWARE Descomplicado
 //Autor Rev3: Fábio Henrique Cabrini
-
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <vector>
 // Configurações - variáveis editáveis
-const char* default_SSID = "Wokwi-GUEST"; // Nome da rede Wi-Fi
-const char* default_PASSWORD = ""; // Senha da rede Wi-Fi
-const char* default_BROKER_MQTT = "bore.pub"; // IP do Broker MQTT
-const int default_BROKER_PORT = 7502; // Porta do Broker MQTT
-const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp001/cmd"; // Tópico MQTT de escuta
-const char* default_TOPICO_SUBSCRIBE2 = "/TEF/lamp001/cmd/"; // Tópico MQTT de escuta // recebendo mudanca de cor
-const char* default_TOPICO_PUBLISH_1 = "/TEF/lamp001/attrs"; // Tópico MQTT de envio de informações para Broker
-const char* default_TOPICO_PUBLISH_2 = "/TEF/lamp001/attrs/l"; // Tópico MQTT de envio de informações para Broker
+const char* default_SSID = "Batcarverna 2.4Ghz"; // Nome da rede Wi-Fi
+const char* default_PASSWORD = "BW131319"; // Senha da rede Wi-Fi
+const char* default_BROKER_MQTT = "34.39.201.158"; // IP do Broker MQTT
+const int default_BROKER_PORT = 1883; // Porta do Broker MQTT
+const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp002/cmd"; // Tópico MQTT de escuta
+const char* default_TOPICO_SUBSCRIBE2 = "/TEF/lamp002/cmd/"; // Tópico MQTT de escuta // recebendo mudanca de cor
+const char* default_TOPICO_PUBLISH_1 = "/TEF/lamp002/attrs"; // Tópico MQTT de envio de informações para Broker
+const char* default_TOPICO_PUBLISH_2 = "/TEF/lamp002/attrs/l"; // Tópico MQTT de envio de informações para Broker
 const char* default_PICO_PUBLISH_3 = "/tef/lamp";
 const char* default_ID_MQTT = "fiware_001"; // ID MQTT
 const int default_D4 = 2; // Pino do LED onboard
-
-const char* topicPrefix = "lamp001";
+// Declaração da variável para o prefixo do tópico
+const char* topicPrefix = "lamp002";
  
 // Variáveis para configurações editáveis
 char* SSID = const_cast<char*>(default_SSID);
@@ -48,12 +47,12 @@ WiFiClient espClient;
 PubSubClient MQTT(espClient);
 char EstadoSaida = '0';
 
-std::vector<String> nomesCores = {"branco", "preto", "vermelho", "azul", "verde", "amarelo"};
+std::vector<String> nomesCores = {"ligar", "desligar", "vermelho", "azul", "verde", "amarelo"};
 std::vector<String> hexaCores = {"#FFFFFF", "#000000", "#FF0000", "#0000FF", "#00FF00", "#FFFF00"};
 void initSerial() {
     Serial.begin(115200);
 }
- 
+
 void initWiFi() {
     delay(10);
     Serial.println("------Conexao WI-FI------");
@@ -103,44 +102,59 @@ void reconectWiFi() {
 }
  
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-    String msg = "";// inicia variavel
+    String msg;
 
-    // converte payload(array de bytes) em string msg
     for (int i = 0; i < length; i++) {
-        msg += (char)payload[i];
+        char c = (char)payload[i];
+        msg += c;
     }
-    // aprova de engracadinhos
     msg.trim();
     msg.toLowerCase();
-    
     Serial.print("- Mensagem recebida: ");
     Serial.println(msg);
+ 
+// procura o pipe
+int pos = msg.indexOf('|');
+// no caso de msg = "lamp001@cor|vermelho", corta tudo antes e deixa
+if (pos != -1) {
+msg = msg.substring(pos + 1);
+}
+     
 
-    if (msg.startsWith("add")) {
-        adicionarNovaCor(msg);
-        return; 
+
+    //aqui acresentamos a lógica de chamada da funcao de cor pra hexadecimal
+    if(msg.startsWith("#")){
+      Serial.println("cor recebida Hex:");
+      Serial.println(msg);
+      EstadoSaida = '1';
+ 
+      setarUsandoHexa(msg);
+    }else if(msg[0] == 'a' && msg[1] == 'd' && msg[2] == 'd'){ // "" é string, '' é char
+      adicionarNovaCor(msg);
+      EstadoSaida = '1';
+
+    }else if(msg.length() > 0){
+      Serial.println("cor recebida Nome:");
+      Serial.println(msg);
+      setarUsandoNome(msg);
+      EstadoSaida = '1';
+    }if (msg == "#000000" || msg == "desligar") {
+      EstadoSaida = '0';
     }
-
-    if (msg.indexOf('|') != -1) {
-        msg = msg.substring(msg.indexOf('|') + 1);
+    else{
+    bool encontrado = false;
+    int total = nomesCores.size();
+    for (int i = 0; i < total; i++) {
+        if (msg == nomesCores[i]) {
+            encontrado = true;
+            break;
     }
+}
 
+if (!encontrado) {
+    EstadoSaida = '0';
+}
 
-    if (msg == "on" || msg.indexOf("@on") != -1) { 
-        digitalWrite(D4, HIGH);
-        EstadoSaida = '1';
-        Serial.println("LED LIGADO");
-    } 
-    else if (msg == "off" || msg.indexOf("@off") != -1) {
-        digitalWrite(D4, LOW);
-        EstadoSaida = '0';
-        Serial.println("LED DESLIGADO");
-    } 
-    else if (msg.startsWith("#")) {
-        setarUsandoHexa(msg);
-    } 
-    else if (msg.length() > 0) {
-        setarUsandoNome(msg);
     }
 }
  
@@ -152,12 +166,10 @@ void VerificaConexoesWiFIEMQTT() {
  
 void EnviaEstadoOutputMQTT() {
     if (EstadoSaida == '1') {
-        MQTT.publish(TOPICO_PUBLISH_1, "s|on");
         Serial.println("- Led Ligado");
     }
  
     if (EstadoSaida == '0') {
-        MQTT.publish(TOPICO_PUBLISH_1, "s|off");
         Serial.println("- Led Desligado");
     }
     Serial.println("- Estado do LED onboard enviado ao broker!");
@@ -207,7 +219,7 @@ void handleLuminosity() {
 // funcao que converte o hexadecimal em RGB
  
 void setarCorPraHex(String hexColor){
-  
+  // removendo o # caso a string seja "#xxxxx" por exemplo, deixando só os caractere numéricos
   if (hexColor.startsWith("#")){
     hexColor.remove(0, 1);
   }
@@ -256,47 +268,41 @@ void setarUsandoNome(String msg) {
         if (msg == nomesCores[i]) {
             Serial.print("Sucesso! Nome: "); Serial.print(nomesCores[i]);
             Serial.print(" -> Hex: "); Serial.println(hexaCores[i]);
-            
+            EstadoSaida ='1';
             setarCorPraHex(hexaCores[i]);
             return; // Encontrou? Sai da função.
         }
-    }
-    Serial.println("Cor nao encontrada na lista.");
+        
+    } Serial.println("Cor nao encontrada na lista.");
+
+    
 }
 
 void setarUsandoHexa(String msg){
   setarCorPraHex(msg);
 }
+
 void adicionarNovaCor(String msg) {
-  // Exemplo esperado: "add|verde|#00ff00"
-  
-  int primeiroPipe = msg.indexOf('|'); 
-  int segundoPipe = msg.indexOf('|', primeiroPipe + 1);
+  // No Arduino, usamos int ou size_t, mas o retorno de erro é -1
+  int pos1 = msg.indexOf('|'); 
+  int pos2 = msg.indexOf('|', pos1 + 1);
 
-  // Se encontrou os dois pipes
-  if (primeiroPipe != -1 && segundoPipe != -1) {
+  // Verificamos se encontrou os dois pipes (-1 significa não encontrado)
+  if (pos1 != -1 && pos2 != -1) {
     
-    // Pega o que está entre o 1º e o 2º pipe
-    String nomeCor = msg.substring(primeiroPipe + 1, segundoPipe); 
-    
-    // Pega tudo que está depois do 2º pipe
-    String hexaCor = msg.substring(segundoPipe + 1);
+    // No Arduino: substring(inicio, fim) 
+    // Diferente do C++ padrão, o segundo parâmetro é a POSIÇÃO FINAL, não o tamanho.
+    String nomeCor = msg.substring(pos1 + 1, pos2); 
+    String hexaCor = msg.substring(pos2 + 1);
 
-    // REMOVE espaços, \n ou \r que estragam a comparação
-    nomeCor.trim();
-    hexaCor.trim();
-
-    // seria o Append() do C++ em vetores
     nomesCores.push_back(nomeCor);
     hexaCores.push_back(hexaCor);
 
-    Serial.println("--- NOVA COR CADASTRADA ---");
-    Serial.print("Nome: ["); Serial.print(nomeCor); Serial.println("]");
-    Serial.print("Hexa: ["); Serial.print(hexaCor); Serial.println("]");
+    Serial.print("Nova cor cadastrada: ");
+    Serial.println(nomeCor);
 
-    // teste de fogo
     setarUsandoNome(nomeCor); 
   } else {
-    Serial.println("Erro! Formato aceito: comando|nome|hexa");
+    Serial.println("Erro no formato! Use: add|nome|#hexa");
   }
 }
