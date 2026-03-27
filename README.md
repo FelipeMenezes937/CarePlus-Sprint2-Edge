@@ -44,7 +44,7 @@ Projeto de uma lâmpada inteligente controlada via MQTT, desenvolvida para ESP32
 
 ### Broker MQTT Padrão
 
-- **Endereço**: `34.39.201.158`
+- **Endereço**: `34.39.201.158`<-- ip da máquina que hospeda o fiware
 - **Porta**: 1883
 
 ## Comandos
