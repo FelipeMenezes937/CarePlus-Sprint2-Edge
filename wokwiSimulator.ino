@@ -9,9 +9,9 @@
 #include <PubSubClient.h>
 #include <vector>
 // Configurações - variáveis editáveis
-const char* default_SSID = "Batcarverna 2.4Ghz"; // Nome da rede Wi-Fi
-const char* default_PASSWORD = "BW131319"; // Senha da rede Wi-Fi
-const char* default_BROKER_MQTT = "34.39.201.158"; // IP do Broker MQTT
+const char* default_SSID = "Wokwi GUEST"; // Nome da rede Wi-Fi
+const char* default_PASSWORD = ""; // Senha da rede Wi-Fi
+const char* default_BROKER_MQTT = ""; // IP do Broker MQTT
 const int default_BROKER_PORT = 1883; // Porta do Broker MQTT
 const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp002/cmd"; // Tópico MQTT de escuta
 const char* default_TOPICO_SUBSCRIBE2 = "/TEF/lamp002/cmd/"; // Tópico MQTT de escuta // recebendo mudanca de cor
@@ -34,7 +34,6 @@ char* TOPICO_PUBLISH_2 = const_cast<char*>(default_TOPICO_PUBLISH_2);
 char* ID_MQTT = const_cast<char*>(default_ID_MQTT);
 
  
-// mudancas feitas pelo felipe
 //iniciando tratamento de portas do difusor, cada letra do rgb se comporta como um led independente, por isso 3 entradas
 const int RED_PIN = 25;
 const int GREEN_PIN = 26;
