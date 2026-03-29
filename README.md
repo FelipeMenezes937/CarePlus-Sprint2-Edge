@@ -61,6 +61,10 @@ Ou utilize a PlatformIO IDE.
 
 Este projeto pode ser simulado no [Wokwi](https://wokwi.com/projects/458761019384626177)
 
+## Integração com Fiware Descomplicado
+
+Este software se integra ao [Fiware Descomplicado](https://github.com/fabiocabrini/fiware.git), uma variação do Fiware criada pelo Prof. Fábio Henrique Cabrini.
+
 ## Autores
 
 | Nome | Função |
