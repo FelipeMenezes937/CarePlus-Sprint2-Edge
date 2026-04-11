@@ -8,22 +8,29 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <vector>
-// Configurações - variáveis editáveis
-const char* default_SSID = "Wokwi GUEST"; // Nome da rede Wi-Fi
-const char* default_PASSWORD = ""; // Senha da rede Wi-Fi
-const char* default_BROKER_MQTT = ""; // IP do Broker MQTT
-const int default_BROKER_PORT = 1883; // Porta do Broker MQTT
+#include <DHT.h>
+
+const char* default_SSID = "Wokwi-GUEST"; // Nome da rede Wi-Fi 
+const char* default_PASSWORD = ""; // Senha da rede Wi-Fi 
+const char* default_BROKER_MQTT = "bore.pub"; // IP do Broker MQTT 
+const int default_BROKER_PORT = 16395; // Porta do Broker MQTT
 const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp002/cmd"; // Tópico MQTT de escuta
 const char* default_TOPICO_SUBSCRIBE2 = "/TEF/lamp002/cmd/"; // Tópico MQTT de escuta // recebendo mudanca de cor
 const char* default_TOPICO_PUBLISH_1 = "/TEF/lamp002/attrs"; // Tópico MQTT de envio de informações para Broker
 const char* default_TOPICO_PUBLISH_2 = "/TEF/lamp002/attrs/l"; // Tópico MQTT de envio de informações para Broker
+const char* default_TOPICO_PUBLISH_3 = "/TEF/lamp002/attrs/t"; // Tópico MQTT de envio de informações para Broker
+const char* default_TOPICO_PUBLISH_4 = "/TEF/lamp002/attrs/h"; // Tópico MQTT de envio de informações para Broker
 const char* default_PICO_PUBLISH_3 = "/tef/lamp";
 const char* default_ID_MQTT = "fiware_001"; // ID MQTT
 
 // Declaração da variável para o prefixo do tópico
 const char* topicPrefix = "lamp002";
- 
-// Variáveis para configurações editáveis
+
+
+#define DHTPIN 12
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+// configurações editáveis
 char* SSID = const_cast<char*>(default_SSID);
 char* PASSWORD = const_cast<char*>(default_PASSWORD);
 char* BROKER_MQTT = const_cast<char*>(default_BROKER_MQTT);
@@ -31,6 +38,8 @@ int BROKER_PORT = default_BROKER_PORT;
 char* TOPICO_SUBSCRIBE = const_cast<char*>(default_TOPICO_SUBSCRIBE);
 char* TOPICO_PUBLISH_1 = const_cast<char*>(default_TOPICO_PUBLISH_1);
 char* TOPICO_PUBLISH_2 = const_cast<char*>(default_TOPICO_PUBLISH_2);
+char* TOPICO_PUBLISH_3 = const_cast<char*>(default_TOPICO_PUBLISH_3);
+char* TOPICO_PUBLISH_4 = const_cast<char*>(default_TOPICO_PUBLISH_4);
 char* ID_MQTT = const_cast<char*>(default_ID_MQTT);
 
  
@@ -70,12 +79,14 @@ void setup() {
     initMQTT();
     delay(5000);
     MQTT.publish(TOPICO_PUBLISH_1, "s|on");
+    dht.begin();
 }
  
 void loop() {
     VerificaConexoesWiFIEMQTT();
     EnviaEstadoOutputMQTT();
     handleLuminosity();
+    handleEnviroment();
     MQTT.loop();
 }
  
@@ -190,11 +201,35 @@ void handleLuminosity() {
     int sensorValue = analogRead(potPin);
     int luminosity = map(sensorValue, 0, 4095, 0, 100);// mapeando o valor da luminosidade, para 0 a 100
     String mensagem = String(luminosity);
-    Serial.print("Valor da luminosidade: ");
+    Serial.print(F("Valor da luminosidade: "));
     Serial.println(mensagem.c_str());
     MQTT.publish(TOPICO_PUBLISH_2, mensagem.c_str());
 }
- 
+
+void handleEnviroment(){
+  // Lemos o valor real primeiro
+  int h_raw = (int)dht.readHumidity();
+  int t_raw = (int)dht.readTemperature(); 
+
+  if(isnan(h_raw) || isnan(t_raw)){
+    Serial.println(F("o sensor dht22 não tá lendo"));
+    return;
+  }
+
+  // Agora convertemos para int para usar no seu map
+  int h = (int)h_raw;
+  int t = (int)t_raw;
+
+  int tPercent = t; 
+
+  MQTT.publish(TOPICO_PUBLISH_3, String(tPercent).c_str());
+  MQTT.publish(TOPICO_PUBLISH_4, String(h).c_str());
+
+  Serial.print(F("T: ")); Serial.print(tPercent); Serial.print(F("°C | "));
+  Serial.print(F("U: ")); Serial.print(h); Serial.println(F("%"));
+}
+
+
 // funcao que converte o hexadecimal em RGB
  
 void setarCorPraHex(String hexColor){
@@ -228,7 +263,7 @@ void setarCorPraHex(String hexColor){
     analogWrite(GREEN_PIN, g);
     analogWrite(BLUE_PIN, b);
  
-    Serial.print("RGB -> ");
+    Serial.print(F("RGB -> "));
     Serial.print(r);
     Serial.print(",");
     Serial.print(g);
@@ -246,7 +281,7 @@ void setarUsandoNome(String msg) {
     for (int i = 0; i < total; i++) {
         if (msg == nomesCores[i]) {
             Serial.print("Sucesso! Nome: "); Serial.print(nomesCores[i]);
-            Serial.print(" -> Hex: "); Serial.println(hexaCores[i]);
+            Serial.print(F(" -> Hex: ")); Serial.println(hexaCores[i]);
             EstadoSaida ='1';
             setarCorPraHex(hexaCores[i]);
             return; // Encontrou? Sai da função.
@@ -276,7 +311,7 @@ void adicionarNovaCor(String msg) {
     nomesCores.push_back(nomeCor);
     hexaCores.push_back(hexaCor);
 
-    Serial.print("Nova cor cadastrada: ");
+    Serial.print(F("Nova cor cadastrada: "));
     Serial.println(nomeCor);
 
     EstadoSaida = '1';
@@ -285,6 +320,6 @@ void adicionarNovaCor(String msg) {
 
 
   } else {
-    Serial.println("Erro no formato! Use: add|nome|#hexa");
+    Serial.println(F("Erro no formato! Use: add|nome|#hexa"));
   }
 }
