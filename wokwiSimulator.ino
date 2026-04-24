@@ -47,10 +47,12 @@ char* ID_MQTT = const_cast<char*>(default_ID_MQTT);
 const int RED_PIN = 25;
 const int GREEN_PIN = 26;
 const int BLUE_PIN = 27;
- 
+const int buzzer_pin = 14;
+
 WiFiClient espClient;
 PubSubClient MQTT(espClient);
 char EstadoSaida = '0';
+bool modoCritico = false;
 
 std::vector<String> nomesCores = {"ligar", "desligar", "vermelho", "azul", "verde", "amarelo"};
 std::vector<String> hexaCores = {"#FFFFFF", "#000000", "#FF0000", "#0000FF", "#00FF00", "#FFFF00"};
@@ -153,6 +155,12 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
       EstadoSaida = '0';
     }
 
+    if (msg == "critico") {
+      entrarModoCritico();
+    } else if (msg == "estavel") {
+      sairModoCritico();
+    }
+
     }
 
 // verifica se o MQTT está conectado
@@ -180,6 +188,7 @@ void InitOutput() {
     pinMode(RED_PIN, OUTPUT);
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(BLUE_PIN, OUTPUT);
+    pinMode(buzzer_pin, OUTPUT);
 }
 void reconnectMQTT() {
     while (!MQTT.connected()) {
@@ -322,4 +331,21 @@ void adicionarNovaCor(String msg) {
   } else {
     Serial.println(F("Erro no formato! Use: add|nome|#hexa"));
   }
+}
+
+void entrarModoCritico() {
+  modoCritico = true;
+  EstadoSaida = '1';
+  Serial.println(F("*** MODO CRÍTICO ATIVADO ***"));
+  Serial.println(F("LED vermelho + buzzer tocando"));
+  setarCorPraHex("#FF0000");
+  digitalWrite(buzzer_pin, HIGH);
+}
+
+void sairModoCritico() {
+  modoCritico = false;
+  Serial.println(F("*** MODO ESTÁVEL - Alerta encerrado ***"));
+  digitalWrite(buzzer_pin, LOW);
+  setarCorPraHex("#00FF00");
+  EstadoSaida = '1';
 }
