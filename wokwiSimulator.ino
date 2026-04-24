@@ -53,6 +53,7 @@ WiFiClient espClient;
 PubSubClient MQTT(espClient);
 char EstadoSaida = '0';
 bool modoCritico = false;
+unsigned long timerEndMillis = 0;
 
 std::vector<String> nomesCores = {"ligar", "desligar", "vermelho", "azul", "verde", "amarelo"};
 std::vector<String> hexaCores = {"#FFFFFF", "#000000", "#FF0000", "#0000FF", "#00FF00", "#FFFF00"};
@@ -89,6 +90,7 @@ void loop() {
     EnviaEstadoOutputMQTT();
     handleLuminosity();
     handleEnviroment();
+    verificarTimer();
     MQTT.loop();
 }
  
@@ -111,57 +113,69 @@ void reconectWiFi() {
 }
  
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-    String msg;
+    String msgOriginal;
 
     for (int i = 0; i < length; i++) {
         char c = (char)payload[i];
-        msg += c;
+        msgOriginal += c;
     }
 
-    // tratando a mensagem antes das validacoes
-    msg.trim();
-    msg.toLowerCase();
+    msgOriginal.trim();
+    msgOriginal.toLowerCase();
     Serial.print("- Mensagem recebida: ");
-    Serial.println(msg);
- 
-    // procura o pipe
-    int pos = msg.indexOf('|');
-    // no caso de msg = "lamp001@cor|vermelho", corta tudo antes e deixa
+    Serial.println(msgOriginal);
+
+    int pos = msgOriginal.indexOf('|');
+    String parteCor = msgOriginal;
+    int timerSegundos = 0;
+
     if (pos != -1) {
-    msg = msg.substring(pos + 1);
-    }
-     
+        parteCor = msgOriginal.substring(0, pos);
+        String parteTimer = msgOriginal.substring(pos + 1);
+        parteTimer.trim();
+        parteTimer.toLowerCase();
 
-
-    //aqui acresentamos a lógica de chamada da funcao de cor pra hexadecimal
-    if(msg.startsWith("#")){
-      Serial.println("cor recebida Hex:");
-      Serial.println(msg);
-      EstadoSaida = '1';
- 
-      // chama funcao setarUsandoHexa passando msg como parametro
-      setarUsandoHexa(msg);
-    }else if(msg[0] == 'a' && msg[1] == 'd' && msg[2] == 'd'){ // "" é string, '' é char
-      adicionarNovaCor(msg);
-      EstadoSaida = '1';
-      return;
-
-    }else if(msg.length() > 0){
-      Serial.println("cor recebida Nome:");
-      Serial.println(msg);
-      setarUsandoNome(msg);
-
-    }if (msg == "#000000" || msg == "desligar") {
-      EstadoSaida = '0';
+        if (parteTimer.startsWith("t")) {
+            parteTimer.remove(0, 1);
+            timerSegundos = parteTimer.toInt();
+        }
     }
 
-    if (msg == "critico") {
-      entrarModoCritico();
-    } else if (msg == "estavel") {
-      sairModoCritico();
+    if (msgOriginal.startsWith("add")) {
+        adicionarNovaCor(msgOriginal);
+        EstadoSaida = '1';
+        return;
     }
 
+    if (msgOriginal == "critico") {
+        entrarModoCritico();
+        return;
+    } else if (msgOriginal == "estavel") {
+        sairModoCritico();
+        return;
     }
+
+    if (parteCor.startsWith("#")) {
+        Serial.println("cor recebida Hex:");
+        Serial.println(parteCor);
+        EstadoSaida = '1';
+        setarCorPraHex(parteCor);
+    } else if (parteCor == "desligar" || parteCor == "#000000") {
+        EstadoSaida = '0';
+        setarCorPraHex("#000000");
+        timerEndMillis = 0;
+        return;
+    } else {
+        setarUsandoNome(parteCor);
+    }
+
+    if (timerSegundos > 0) {
+        timerEndMillis = millis() + (timerSegundos * 1000UL);
+        Serial.print("Timer ativado: ");
+        Serial.print(timerSegundos);
+        Serial.println(" segundos");
+    }
+}
 
 // verifica se o MQTT está conectado
 void VerificaConexoesWiFIEMQTT() {
@@ -189,6 +203,15 @@ void InitOutput() {
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(BLUE_PIN, OUTPUT);
     pinMode(buzzer_pin, OUTPUT);
+}
+
+void verificarTimer() {
+    if (timerEndMillis > 0 && millis() >= timerEndMillis) {
+        timerEndMillis = 0;
+        Serial.println(F("Timer expirou - desligando LED"));
+        setarCorPraHex("#000000");
+        EstadoSaida = '0';
+    }
 }
 void reconnectMQTT() {
     while (!MQTT.connected()) {
@@ -305,32 +328,35 @@ void setarUsandoHexa(String msg){
 }
 
 void adicionarNovaCor(String msg) {
-  // No Arduino, usamos int ou size_t, mas o retorno de erro é -1
-  int pos1 = msg.indexOf('|'); 
-  int pos2 = msg.indexOf('|', pos1 + 1);
+    int pos1 = msg.indexOf('|');
+    int pos2 = msg.indexOf('|', pos1 + 1);
 
-  // Verificamos se encontrou os dois pipes (-1 significa não encontrado)
-  if (pos1 != -1 && pos2 != -1) {
-    
-    // No Arduino: substring(inicio, fim) 
-    // Diferente do C++ padrão, o segundo parâmetro é a POSIÇÃO FINAL, não o tamanho.
-    String nomeCor = msg.substring(pos1 + 1, pos2); 
-    String hexaCor = msg.substring(pos2 + 1);
+    if (pos1 != -1 && pos2 != -1) {
+        String nomeCor = msg.substring(pos1 + 1, pos2);
+        String hexaCor = msg.substring(pos2 + 1);
 
-    nomesCores.push_back(nomeCor);
-    hexaCores.push_back(hexaCor);
+        nomeCor.trim();
+        hexaCor.trim();
 
-    Serial.print(F("Nova cor cadastrada: "));
-    Serial.println(nomeCor);
+        int posHex = hexaCor.indexOf('|');
+        if (posHex != -1) {
+            hexaCor = hexaCor.substring(0, posHex);
+        }
 
-    EstadoSaida = '1';
-    Serial.println(EstadoSaida);
-    setarUsandoNome(nomeCor);
+        hexaCor.trim();
 
+        nomesCores.push_back(nomeCor);
+        hexaCores.push_back(hexaCor);
 
-  } else {
-    Serial.println(F("Erro no formato! Use: add|nome|#hexa"));
-  }
+        Serial.print(F("Nova cor cadastrada: "));
+        Serial.println(nomeCor);
+
+        EstadoSaida = '1';
+        setarCorPraHex(hexaCor);
+    } else {
+        Serial.println(F("Erro no formato! Use: add|nome|#hexa"));
+    }
+}
 }
 
 void entrarModoCritico() {
