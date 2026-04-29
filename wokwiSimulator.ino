@@ -8,29 +8,22 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <vector>
-#include <DHT.h>
-
-const char* default_SSID = "Wokwi-GUEST"; // Nome da rede Wi-Fi 
-const char* default_PASSWORD = ""; // Senha da rede Wi-Fi 
-const char* default_BROKER_MQTT = "bore.pub"; // IP do Broker MQTT 
-const int default_BROKER_PORT = 16395; // Porta do Broker MQTT
+// Configurações - variáveis editáveis
+const char* default_SSID = "Wokwi GUEST"; // Nome da rede Wi-Fi
+const char* default_PASSWORD = ""; // Senha da rede Wi-Fi
+const char* default_BROKER_MQTT = "bore.pub"; // IP do Broker MQTT
+const int default_BROKER_PORT = 33313; // Porta do Broker MQTT
 const char* default_TOPICO_SUBSCRIBE = "/TEF/lamp002/cmd"; // Tópico MQTT de escuta
 const char* default_TOPICO_SUBSCRIBE2 = "/TEF/lamp002/cmd/"; // Tópico MQTT de escuta // recebendo mudanca de cor
 const char* default_TOPICO_PUBLISH_1 = "/TEF/lamp002/attrs"; // Tópico MQTT de envio de informações para Broker
 const char* default_TOPICO_PUBLISH_2 = "/TEF/lamp002/attrs/l"; // Tópico MQTT de envio de informações para Broker
-const char* default_TOPICO_PUBLISH_3 = "/TEF/lamp002/attrs/t"; // Tópico MQTT de envio de informações para Broker
-const char* default_TOPICO_PUBLISH_4 = "/TEF/lamp002/attrs/h"; // Tópico MQTT de envio de informações para Broker
 const char* default_PICO_PUBLISH_3 = "/tef/lamp";
 const char* default_ID_MQTT = "fiware_001"; // ID MQTT
 
 // Declaração da variável para o prefixo do tópico
 const char* topicPrefix = "lamp002";
-
-
-#define DHTPIN 12
-#define DHTTYPE DHT22
-DHT dht(DHTPIN, DHTTYPE);
-// configurações editáveis
+ 
+// Variáveis para configurações editáveis
 char* SSID = const_cast<char*>(default_SSID);
 char* PASSWORD = const_cast<char*>(default_PASSWORD);
 char* BROKER_MQTT = const_cast<char*>(default_BROKER_MQTT);
@@ -38,8 +31,6 @@ int BROKER_PORT = default_BROKER_PORT;
 char* TOPICO_SUBSCRIBE = const_cast<char*>(default_TOPICO_SUBSCRIBE);
 char* TOPICO_PUBLISH_1 = const_cast<char*>(default_TOPICO_PUBLISH_1);
 char* TOPICO_PUBLISH_2 = const_cast<char*>(default_TOPICO_PUBLISH_2);
-char* TOPICO_PUBLISH_3 = const_cast<char*>(default_TOPICO_PUBLISH_3);
-char* TOPICO_PUBLISH_4 = const_cast<char*>(default_TOPICO_PUBLISH_4);
 char* ID_MQTT = const_cast<char*>(default_ID_MQTT);
 
  
@@ -47,13 +38,10 @@ char* ID_MQTT = const_cast<char*>(default_ID_MQTT);
 const int RED_PIN = 25;
 const int GREEN_PIN = 26;
 const int BLUE_PIN = 27;
-const int buzzer_pin = 14;
-
+ 
 WiFiClient espClient;
 PubSubClient MQTT(espClient);
 char EstadoSaida = '0';
-bool modoCritico = false;
-unsigned long timerEndMillis = 0;
 
 std::vector<String> nomesCores = {"ligar", "desligar", "vermelho", "azul", "verde", "amarelo"};
 std::vector<String> hexaCores = {"#FFFFFF", "#000000", "#FF0000", "#0000FF", "#00FF00", "#FFFF00"};
@@ -82,15 +70,12 @@ void setup() {
     initMQTT();
     delay(5000);
     MQTT.publish(TOPICO_PUBLISH_1, "s|on");
-    dht.begin();
 }
  
 void loop() {
     VerificaConexoesWiFIEMQTT();
     EnviaEstadoOutputMQTT();
     handleLuminosity();
-    handleEnviroment();
-    verificarTimer();
     MQTT.loop();
 }
  
@@ -113,69 +98,51 @@ void reconectWiFi() {
 }
  
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-    String msgOriginal;
+    String msg;
 
     for (int i = 0; i < length; i++) {
         char c = (char)payload[i];
-        msgOriginal += c;
+        msg += c;
     }
 
-    msgOriginal.trim();
-    msgOriginal.toLowerCase();
+    // tratando a mensagem antes das validacoes
+    msg.trim();
+    msg.toLowerCase();
     Serial.print("- Mensagem recebida: ");
-    Serial.println(msgOriginal);
-
-    int pos = msgOriginal.indexOf('|');
-    String parteCor = msgOriginal;
-    int timerSegundos = 0;
-
+    Serial.println(msg);
+ 
+    // procura o pipe
+    int pos = msg.indexOf('|');
+    // no caso de msg = "lamp001@cor|vermelho", corta tudo antes e deixa
     if (pos != -1) {
-        parteCor = msgOriginal.substring(0, pos);
-        String parteTimer = msgOriginal.substring(pos + 1);
-        parteTimer.trim();
-        parteTimer.toLowerCase();
+    msg = msg.substring(pos + 1);
+    }
+     
 
-        if (parteTimer.startsWith("t")) {
-            parteTimer.remove(0, 1);
-            timerSegundos = parteTimer.toInt();
-        }
+
+    //aqui acresentamos a lógica de chamada da funcao de cor pra hexadecimal
+    if(msg.startsWith("#")){
+      Serial.println("cor recebida Hex:");
+      Serial.println(msg);
+      EstadoSaida = '1';
+ 
+      // chama funcao setarUsandoHexa passando msg como parametro
+      setarUsandoHexa(msg);
+    }else if(msg[0] == 'a' && msg[1] == 'd' && msg[2] == 'd'){ // "" é string, '' é char
+      adicionarNovaCor(msg);
+      EstadoSaida = '1';
+      return;
+
+    }else if(msg.length() > 0){
+      Serial.println("cor recebida Nome:");
+      Serial.println(msg);
+      setarUsandoNome(msg);
+
+    }if (msg == "#000000" || msg == "desligar") {
+      EstadoSaida = '0';
     }
 
-    if (msgOriginal.startsWith("add")) {
-        adicionarNovaCor(msgOriginal);
-        EstadoSaida = '1';
-        return;
     }
-
-    if (msgOriginal == "critico") {
-        entrarModoCritico();
-        return;
-    } else if (msgOriginal == "estavel") {
-        sairModoCritico();
-        return;
-    }
-
-    if (parteCor.startsWith("#")) {
-        Serial.println("cor recebida Hex:");
-        Serial.println(parteCor);
-        EstadoSaida = '1';
-        setarCorPraHex(parteCor);
-    } else if (parteCor == "desligar" || parteCor == "#000000") {
-        EstadoSaida = '0';
-        setarCorPraHex("#000000");
-        timerEndMillis = 0;
-        return;
-    } else {
-        setarUsandoNome(parteCor);
-    }
-
-    if (timerSegundos > 0) {
-        timerEndMillis = millis() + (timerSegundos * 1000UL);
-        Serial.print("Timer ativado: ");
-        Serial.print(timerSegundos);
-        Serial.println(" segundos");
-    }
-}
 
 // verifica se o MQTT está conectado
 void VerificaConexoesWiFIEMQTT() {
@@ -202,16 +169,6 @@ void InitOutput() {
     pinMode(RED_PIN, OUTPUT);
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(BLUE_PIN, OUTPUT);
-    pinMode(buzzer_pin, OUTPUT);
-}
-
-void verificarTimer() {
-    if (timerEndMillis > 0 && millis() >= timerEndMillis) {
-        timerEndMillis = 0;
-        Serial.println(F("Timer expirou - desligando LED"));
-        setarCorPraHex("#000000");
-        EstadoSaida = '0';
-    }
 }
 void reconnectMQTT() {
     while (!MQTT.connected()) {
@@ -233,35 +190,11 @@ void handleLuminosity() {
     int sensorValue = analogRead(potPin);
     int luminosity = map(sensorValue, 0, 4095, 0, 100);// mapeando o valor da luminosidade, para 0 a 100
     String mensagem = String(luminosity);
-    Serial.print(F("Valor da luminosidade: "));
+    Serial.print("Valor da luminosidade: ");
     Serial.println(mensagem.c_str());
     MQTT.publish(TOPICO_PUBLISH_2, mensagem.c_str());
 }
-
-void handleEnviroment(){
-  // Lemos o valor real primeiro
-  int h_raw = (int)dht.readHumidity();
-  int t_raw = (int)dht.readTemperature(); 
-
-  if(isnan(h_raw) || isnan(t_raw)){
-    Serial.println(F("o sensor dht22 não tá lendo"));
-    return;
-  }
-
-  // Agora convertemos para int para usar no seu map
-  int h = (int)h_raw;
-  int t = (int)t_raw;
-
-  int tPercent = t; 
-
-  MQTT.publish(TOPICO_PUBLISH_3, String(tPercent).c_str());
-  MQTT.publish(TOPICO_PUBLISH_4, String(h).c_str());
-
-  Serial.print(F("T: ")); Serial.print(tPercent); Serial.print(F("°C | "));
-  Serial.print(F("U: ")); Serial.print(h); Serial.println(F("%"));
-}
-
-
+ 
 // funcao que converte o hexadecimal em RGB
  
 void setarCorPraHex(String hexColor){
@@ -295,7 +228,7 @@ void setarCorPraHex(String hexColor){
     analogWrite(GREEN_PIN, g);
     analogWrite(BLUE_PIN, b);
  
-    Serial.print(F("RGB -> "));
+    Serial.print("RGB -> ");
     Serial.print(r);
     Serial.print(",");
     Serial.print(g);
@@ -313,7 +246,7 @@ void setarUsandoNome(String msg) {
     for (int i = 0; i < total; i++) {
         if (msg == nomesCores[i]) {
             Serial.print("Sucesso! Nome: "); Serial.print(nomesCores[i]);
-            Serial.print(F(" -> Hex: ")); Serial.println(hexaCores[i]);
+            Serial.print(" -> Hex: "); Serial.println(hexaCores[i]);
             EstadoSaida ='1';
             setarCorPraHex(hexaCores[i]);
             return; // Encontrou? Sai da função.
@@ -328,50 +261,30 @@ void setarUsandoHexa(String msg){
 }
 
 void adicionarNovaCor(String msg) {
-    int pos1 = msg.indexOf('|');
-    int pos2 = msg.indexOf('|', pos1 + 1);
+  // No Arduino, usamos int ou size_t, mas o retorno de erro é -1
+  int pos1 = msg.indexOf('|'); 
+  int pos2 = msg.indexOf('|', pos1 + 1);
 
-    if (pos1 != -1 && pos2 != -1) {
-        String nomeCor = msg.substring(pos1 + 1, pos2);
-        String hexaCor = msg.substring(pos2 + 1);
+  // Verificamos se encontrou os dois pipes (-1 significa não encontrado)
+  if (pos1 != -1 && pos2 != -1) {
+    
+    // No Arduino: substring(inicio, fim) 
+    // Diferente do C++ padrão, o segundo parâmetro é a POSIÇÃO FINAL, não o tamanho.
+    String nomeCor = msg.substring(pos1 + 1, pos2); 
+    String hexaCor = msg.substring(pos2 + 1);
 
-        nomeCor.trim();
-        hexaCor.trim();
+    nomesCores.push_back(nomeCor);
+    hexaCores.push_back(hexaCor);
 
-        int posHex = hexaCor.indexOf('|');
-        if (posHex != -1) {
-            hexaCor = hexaCor.substring(0, posHex);
-        }
+    Serial.print("Nova cor cadastrada: ");
+    Serial.println(nomeCor);
 
-        hexaCor.trim();
+    EstadoSaida = '1';
+    Serial.println(EstadoSaida);
+    setarUsandoNome(nomeCor);
 
-        nomesCores.push_back(nomeCor);
-        hexaCores.push_back(hexaCor);
 
-        Serial.print(F("Nova cor cadastrada: "));
-        Serial.println(nomeCor);
-
-        EstadoSaida = '1';
-        setarCorPraHex(hexaCor);
-    } else {
-        Serial.println(F("Erro no formato! Use: add|nome|#hexa"));
-    }
-}
-}
-
-void entrarModoCritico() {
-  modoCritico = true;
-  EstadoSaida = '1';
-  Serial.println(F("*** MODO CRÍTICO ATIVADO ***"));
-  Serial.println(F("LED vermelho + buzzer tocando"));
-  setarCorPraHex("#FF0000");
-  digitalWrite(buzzer_pin, HIGH);
-}
-
-void sairModoCritico() {
-  modoCritico = false;
-  Serial.println(F("*** MODO ESTÁVEL - Alerta encerrado ***"));
-  digitalWrite(buzzer_pin, LOW);
-  setarCorPraHex("#00FF00");
-  EstadoSaida = '1';
+  } else {
+    Serial.println("Erro no formato! Use: add|nome|#hexa");
+  }
 }
