@@ -1,4 +1,0 @@
-[wokwi]
-version = 1
-firmware = 'build/wokwiSimulator.ino.bin'
-elf = 'build/wokwiSimulator.ino.elf'

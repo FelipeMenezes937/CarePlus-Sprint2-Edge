@@ -51,7 +51,7 @@ flowchart TD
     MOSQUITTO -- "MQTT\n/ul/TEF/step001/attrs" --> ESP2
 
     TAG -. "Abre URL\nautomaticamente" .-> NFC
-    BROWSER -- "GET /confirmar\n?tag=UID&device=step001" --> NFC_SRV
+    BROWSER -- "POST \vincular\n?tag=UID&device=step001" --> NFC_SRV
     NFC_SRV -- "PATCH /v2/entities\nnfcId = UID" --> ORION
 ```
 
@@ -160,17 +160,44 @@ docker-compose up -d
 
 ---
 
-## Vínculo NFC
 
-1. Leia o UID físico da tag NTAG213 com o app NFC Tools -> Read
-2. Grave a URL na tag com NFC Tools -> Write -> URL:
+### Vínculo NFC
 ```
-http://SEU_DOMINIO:8080/vincular?tag=UID_DA_TAG&device=step001
+Celular encosta na pulseira (NTAG213)
+→ browser abre GET /vincular?tag=UID&device=urn:ngsi-ld:Pedometer:001
+→ exibe página de confirmação
+→ usuário clica "Confirmar vínculo"
+→ browser envia POST /vincular (body: tag + device)
+→ nfc_vincular.py faz PATCH no Orion
+→ atributo nfcId atualizado com UID + timestamp
+→ browser exibe confirmação de sucesso
 ```
-3. Ao encostar o celular na pulseira, o browser abre a página de confirmação
-4. O usuário confirma o vínculo — o Orion registra o `nfcId` na entidade
 
-> IP rotativo? Configure o [DuckDNS](https://www.duckdns.org) para manter um domínio fixo gratuito e evitar regravar a tag a cada troca de IP.
+### LED Monitor
+```
+ESP32 LED subscreve /ul/TEF/step001/attrs via MQTT
+→ extrai campo m| (steps_per_minute)
+→ 0 p/min       → LED apagado
+→ 1–10 p/min    → LED azul (baixo esforço)
+→ 11–20 p/min   → LED amarelo (esforço médio)
+→ 21+ p/min     → LED verde (meta atingida)
+```
+
+---
+
+## Interface de Vínculo NFC
+
+Quando o celular encosta na pulseira, o browser abre automaticamente a interface StepCare.
+
+### Tela de confirmação
+O usuário visualiza o dispositivo detectado e confirma o vínculo.
+
+<img src="./img/mobile1.png" width="300"/>
+
+### Tela de sucesso
+Após confirmar, o sistema registra o vínculo no Orion e exibe a confirmação com dispositivo, tag NFC e horário.
+
+<img src="./img/mobile2.png" width="300"/>
 
 ---
 
@@ -210,7 +237,14 @@ Este projeto é derivado do [FIWARE Descomplicado](https://github.com/fabiocabri
 - Nenhuma alteração nas imagens Docker originais do FIWARE
 
 ---
+# Créditos
 
+Este projeto é uma variação do **[FIWARE Descomplicado](https://github.com/fabiocabrini/fiware)**, desenvolvido pelo **Prof. Fábio Henrique Cabrini** da FIAP. O projeto original fornece a infraestrutura base para integração de dispositivos IoT com a plataforma FIWARE, utilizando MQTT, Orion Context Broker e IoT Agent UltraLight.
+
+A partir dessa base, foram adicionados os módulos de pedômetro com ESP32, vínculo de usuário via NFC e monitor LED de atividade física. Todo o crédito pela arquitetura e stack FIWARE é do professor.
+
+> Repositório original: [github.com/fabiocabrini/fiware](https://github.com/fabiocabrini/fiware)
+---
 ## Autores
 
 | Nome | Função |
